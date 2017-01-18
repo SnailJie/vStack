@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<globalConfig xmlns="http://zstack.org/schema/zstack">
+	<config>
+		<name>zabbixFront.ip</name>
+		<description>zabbix fromt page host ip</description>
+		<category>monitor</category>
+		<defaultValue>127.0.0.1</defaultValue>
+		<type>java.lang.String</type>
+	</config>
+	<config>
+		<name>zabbixFront.session</name>
+		<description>zabbix login session key</description>
+		<category>monitor</category>
+		<defaultValue></defaultValue>
+		<type>java.lang.String</type>
+	</config>
+
+</globalConfig>

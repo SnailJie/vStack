@@ -1,0 +1,3 @@
+#select item in one week
+select * from (
+	select his.itemid AS item,his.'value' AS val

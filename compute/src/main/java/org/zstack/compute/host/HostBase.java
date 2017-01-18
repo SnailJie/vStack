@@ -16,6 +16,7 @@ import org.zstack.core.db.SimpleQuery;
 import org.zstack.core.db.SimpleQuery.Op;
 import org.zstack.core.errorcode.ErrorFacade;
 import org.zstack.core.logging.Event;
+import org.zstack.core.logging.Log;
 import org.zstack.core.thread.ChainTask;
 import org.zstack.core.thread.SyncTaskChain;
 import org.zstack.core.thread.ThreadFacade;
@@ -38,12 +39,19 @@ import org.zstack.header.message.APIDeleteMessage;
 import org.zstack.header.message.APIMessage;
 import org.zstack.header.message.Message;
 import org.zstack.header.message.MessageReply;
+import org.zstack.header.rest.JsonAsyncRESTCallback;
+import org.zstack.header.rest.RESTFacade;
 import org.zstack.header.vm.*;
 import org.zstack.utils.CollectionUtils;
 import org.zstack.utils.DebugUtils;
 import org.zstack.utils.Utils;
 import org.zstack.utils.function.ForEachFunction;
 import org.zstack.utils.logging.CLogger;
+import org.zstack.zabbix.AddHostParams;
+import org.zstack.zabbix.HostGroup;
+import org.zstack.zabbix.HostInterface;
+import org.zstack.zabbix.ZabbixAgentCommands.AddHostToZabbixCmd;
+import org.zstack.zabbix.ZabbixAgentCommands.AddHostToZabbixResponse;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -79,6 +87,8 @@ public abstract class HostBase extends AbstractHost {
     protected EventFacade evtf;
 
     protected final String id;
+    @Autowired
+    private RESTFacade restf;
 
     protected abstract void pingHook(Completion completion);
 
@@ -543,6 +553,8 @@ public abstract class HostBase extends AbstractHost {
             handle((HostDeletionMsg) msg);
         } else if (msg instanceof ConnectHostMsg) {
             handle((ConnectHostMsg) msg);
+        } else if (msg instanceof AddHostToZabbixMsg) {
+            handle((AddHostToZabbixMsg) msg);
         } else if (msg instanceof ConnectHostPubVmMsg) {
             handle((ConnectHostPubVmMsg) msg);
         } else if (msg instanceof ReconnectHostMsg) {
@@ -837,6 +849,84 @@ public abstract class HostBase extends AbstractHost {
 
         });
     }
+    
+    private void handle(final AddHostToZabbixMsg msg) {
+        thdf.chainSubmit(new ChainTask(msg) {
+            @Override
+            public String getName() {
+                return "add-host-to-zabbix" + self.getUuid();
+            }
+
+            @Override
+            public String getSyncSignature() {
+                return id;
+            }
+
+            @Override
+            public void run(final SyncTaskChain chain) {
+            	
+            	
+            	 addHostToZabbix(msg, new NoErrorCompletion(chain) {
+                     @Override
+                     public void done() {
+                         chain.next();
+                     }
+                 });
+            	 
+                        new Log(self.getUuid()).log("add host to zabbix");
+                        HostVO vo = msg.getHost();
+                        AddHostToZabbixCmd cmd = new AddHostToZabbixCmd();
+                        
+                        cmd.setAuth("");
+                        cmd.setJsonrpc("2.0");
+                        cmd.setMethod("host.create");
+                        cmd.setId("1");
+                        AddHostParams paramas = new AddHostParams();
+                        List<HostGroup> groups = new ArrayList<HostGroup>();
+                        HostGroup group = new HostGroup();
+                        group.setGroupid("1");
+                        groups.add(group);
+                        paramas.setGroups(groups);
+                        
+                        List<HostInterface> interfaces = new ArrayList<HostInterface>();
+                        
+                        
+                        HostInterface inte = new HostInterface();
+                        inte.setIp(vo.getManagementIp());
+                        interfaces.add(inte);
+                        paramas.setInterfaces(interfaces);
+                        cmd.setParams(paramas);
+                		 
+                        restf.asyncJsonPost(zabbixPath, cmd, new JsonAsyncRESTCallback<AddHostToZabbixResponse>() {
+                            @Override
+                            public void fail(ErrorCode err) {
+                                trigger.fail(err);
+                            }
+
+                            @Override
+                            public void success(AddHostToZabbixResponse ret) {
+                                if (!ret.isSuccess()) {
+                                    trigger.fail(errf.stringToOperationError(ret.getError()));
+                                    return;
+                                }
+                                trigger.next();
+                            }
+
+                            @Override
+                            public Class<AddHostToZabbixResponse> getReturnClass() {
+                                return AddHostToZabbixResponse.class;
+                            }
+                        });
+               
+            }
+
+            @Override
+            public int getSyncLevel() {
+                return getHostSyncLevel();
+            }
+
+        });
+    }
 
     
     private void connectLocalHost(final ConnectHostPubVmMsg msg, final NoErrorCompletion completion) {
@@ -932,7 +1022,94 @@ public abstract class HostBase extends AbstractHost {
     }
 
     
+    private void addHostToZabbix(final ConnectHostMsg msg, final NoErrorCompletion completion) {
+        checkState();
+        final ConnectHostReply reply = new ConnectHostReply();
 
+        final FlowChain flowChain = FlowChainBuilder.newShareFlowChain();
+        flowChain.setName(String.format("connect-host-%s", self.getUuid()));
+        flowChain.then(new ShareFlow() {
+            @Override
+            public void setup() {
+                flow(new NoRollbackFlow() {
+                    String __name__ = "connect-host";
+
+                    @Override
+                    public void run(final FlowTrigger trigger, Map data) {
+                        changeConnectionState(HostStatusEvent.connecting);
+                        connectHook(ConnectHostInfo.fromConnectHostMsg(msg), new Completion(trigger) {
+                            @Override
+                            public void success() {
+                                trigger.next();
+                            }
+
+                            @Override
+                            public void fail(ErrorCode errorCode) {
+                                trigger.fail(errorCode);
+                            }
+                        });
+                    }
+                });
+
+                flow(new NoRollbackFlow() {
+                    String __name__ = "check-license";
+
+                    @Override
+                    public void run(FlowTrigger trigger, Map data) {
+                        for (PostHostConnectExtensionPoint p : pluginRgty.getExtensionList(PostHostConnectExtensionPoint.class)) {
+                            p.postHostConnect(getSelfInventory());
+                        }
+                        trigger.next();
+                    }
+                });
+
+                flow(new NoRollbackFlow() {
+                    String __name__ = "recalculate-host-capacity";
+
+                    @Override
+                    public void run(FlowTrigger trigger, Map data) {
+                        RecalculateHostCapacityMsg msg = new RecalculateHostCapacityMsg();
+                        msg.setHostUuid(self.getUuid());
+                        bus.makeLocalServiceId(msg, HostAllocatorConstant.SERVICE_ID);
+                        bus.send(msg);
+                        trigger.next();
+                    }
+                });
+
+                done(new FlowDoneHandler(completion, msg) {
+                    @Override
+                    public void handle(Map data) {
+                        changeConnectionState(HostStatusEvent.connected);
+                        tracker.trackHost(self.getUuid());
+
+                        CollectionUtils.safeForEach(pluginRgty.getExtensionList(HostAfterConnectedExtensionPoint.class),
+                                new ForEachFunction<HostAfterConnectedExtensionPoint>() {
+                                    @Override
+                                    public void run(HostAfterConnectedExtensionPoint ext) {
+                                        ext.afterHostConnected(getSelfInventory());
+                                    }
+                                });
+
+                        bus.reply(msg, reply);
+                        completion.done();
+                    }
+                });
+
+                error(new FlowErrorHandler(completion, msg) {
+                    @Override
+                    public void handle(ErrorCode errCode, Map data) {
+                        changeConnectionState(HostStatusEvent.disconnected);
+
+                        new Event().log(HostLogLabel.HOST_STATUS_DISCONNECTED, self.getUuid(), self.getName(), errCode.toString());
+
+                        reply.setError(errCode);
+                        bus.reply(msg, reply);
+                        completion.done();
+                    }
+                });
+            }
+        }).start();
+    }
     
     
     

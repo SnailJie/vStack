@@ -7,7 +7,7 @@
         <version>1.6.0</version>
         <relativePath>..</relativePath>
     </parent>
-    <artifactId>xen</artifactId>
+    <artifactId>zabbix</artifactId>
     <dependencies>
         <dependency>
             <groupId>org.zstack</groupId>
@@ -24,12 +24,6 @@
             <artifactId>console</artifactId>
             <version>${project.version}</version>
         </dependency>
-	<dependency>
-            <groupId>org.zstack</groupId>
-            <artifactId>zabbix</artifactId>
-            <version>${project.version}</version>
-        </dependency>
-
     </dependencies>
 
     <build>

@@ -51,6 +51,9 @@ import org.zstack.utils.logging.CLogger;
 import org.zstack.utils.path.PathUtil;
 import org.zstack.utils.ssh.Ssh;
 import org.zstack.utils.ssh.SshResult;
+import org.zstack.zabbix.AddHostParams;
+import org.zstack.zabbix.HostGroup;
+import org.zstack.zabbix.HostInterface;
 
 import javax.persistence.TypedQuery;
 import java.util.*;
@@ -91,6 +94,7 @@ public class KVMHost extends HostBase implements Host {
     private String snapshotPath;
     private String mergeSnapshotPath;
     private String hostFactPath;
+    private String zabbixPath;
     private String attachIsoPath;
     private String detachIsoPath;
     private String checkVmStatePath;
@@ -194,6 +198,12 @@ public class KVMHost extends HostBase implements Host {
         ub = UriComponentsBuilder.fromHttpUrl(baseUrl);
         ub.path(KVMConstant.KVM_DELETE_CONSOLE_FIREWALL_PATH);
         deleteConsoleFirewall = ub.build().toString();
+        
+        //zabbix
+        ub = UriComponentsBuilder.fromHttpUrl(baseUrl);
+        ub.path(KVMConstant.ZABBIX_PATH);
+        zabbixPath = ub.build().toString();
+        
     }
 
     @Override
@@ -2433,6 +2443,56 @@ public class KVMHost extends HostBase implements Host {
                             trigger.next();
                         }
                     });
+//                    //TODO
+//                    flow(new NoRollbackFlow() {
+//                        String __name__ = "add-into-zabbix";
+//
+//                        @Override
+//                        public void run(FlowTrigger trigger, Map data) {
+//                            new Log(self.getUuid()).log("add host to zabbix");
+//                            AddHostToZabbixCmd cmd = new AddHostToZabbixCmd();
+//                            cmd.setAuth("");
+//                            cmd.setJsonrpc("2.0");
+//                            cmd.setMethod("host.create");
+//                            cmd.setId("1");
+//                            AddHostParams paramas = new AddHostParams();
+//                            List<HostGroup> groups = new ArrayList<HostGroup>();
+//                            HostGroup group = new HostGroup();
+//                            group.setGroupid("1");
+//                            groups.add(group);
+//                            paramas.setGroups(groups);
+//                            
+//                            List<HostInterface> interfaces = new ArrayList<HostInterface>();
+//                            
+//                            
+//                            HostInterface inte = new HostInterface();
+//                            inte.setIp(ip);
+//                            interfaces.add(inte);
+//                            paramas.setInterfaces(interfaces);
+//                            cmd.setParams(paramas);
+//                    		 
+//                            restf.asyncJsonPost(zabbixPath, cmd, new JsonAsyncRESTCallback<AddHostToZabbixResponse>() {
+//                                @Override
+//                                public void fail(ErrorCode err) {
+//                                    trigger.fail(err);
+//                                }
+//
+//                                @Override
+//                                public void success(AddHostToZabbixResponse ret) {
+//                                    if (!ret.isSuccess()) {
+//                                        trigger.fail(errf.stringToOperationError(ret.getError()));
+//                                        return;
+//                                    }
+//                                    trigger.next();
+//                                }
+//
+//                                @Override
+//                                public Class<AddHostToZabbixResponse> getReturnClass() {
+//                                    return AddHostToZabbixResponse.class;
+//                                }
+//                            });
+//                        }
+//                    });
 
                     error(new FlowErrorHandler(complete) {
                         @Override

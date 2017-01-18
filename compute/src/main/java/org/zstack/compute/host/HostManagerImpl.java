@@ -36,6 +36,8 @@ import org.zstack.header.message.APIMessage;
 import org.zstack.header.message.Message;
 import org.zstack.header.message.MessageReply;
 import org.zstack.header.message.NeedReplyMessage;
+import org.zstack.header.rest.JsonAsyncRESTCallback;
+import org.zstack.header.rest.RESTFacade;
 import org.zstack.header.vm.CreateVmOnLocalMsg;
 import org.zstack.header.vm.DeleteVmPubOnLocalMsg;
 import org.zstack.header.vm.RebootVmPubOnLocalMsg;
@@ -51,6 +53,7 @@ import org.zstack.utils.ObjectUtils;
 import org.zstack.utils.Utils;
 import org.zstack.utils.function.ForEachFunction;
 import org.zstack.utils.logging.CLogger;
+import org.zstack.xen.XenAgentCommands.DestroyVmResponse;
 
 import javax.persistence.Tuple;
 import java.util.*;
@@ -79,6 +82,8 @@ public class HostManagerImpl extends AbstractService implements HostManager, Man
     private TagManager tagMgr;
     @Autowired
     private HostCpuOverProvisioningManager cpuRatioMgr;
+    @Autowired
+    private RESTFacade restf;
     
     @Autowired
     protected ThreadFacade thdf;
@@ -404,6 +409,25 @@ public class HostManagerImpl extends AbstractService implements HostManager, Man
                     }
                 });
             }
+        }).then(new NoRollbackFlow() {
+            String __name__ = "add-host-to-zabbix";
+
+            @Override
+            public void run(final FlowTrigger trigger, Map data) {
+            	 AddHostToZabbixMsg addHostToZabbixMsg = new AddHostToZabbixMsg();
+            	 addHostToZabbixMsg.setHost(hvo);
+                 bus.makeTargetServiceIdByResourceUuid(addHostToZabbixMsg, HostConstant.SERVICE_ID, hvo.getUuid());
+                 bus.send(addHostToZabbixMsg, new CloudBusCallBack(trigger) {
+                     @Override
+                     public void run(MessageReply reply) {
+                         if (reply.isSuccess()) {
+                             trigger.next();
+                         } else {
+                             trigger.fail(reply.getError());
+                         }
+                     }
+                 });
+            }
         }).done(new FlowDoneHandler(amsg) {
             @Override
             public void handle(Map data) {
@@ -564,13 +588,11 @@ public class HostManagerImpl extends AbstractService implements HostManager, Man
     
     
     
-    
 
 
     @Deferred
     private void handle(final APIAddHostMsg msg) {
         final APIAddHostEvent evt = new APIAddHostEvent(msg.getId());
-
         doAddHost(msg, new ReturnValueCompletion<HostInventory>() {
             @Override
             public void success(HostInventory inventory) {

@@ -44,6 +44,9 @@ public interface KVMConstant {
     public static final String ISO_TO = "kvm.isoto";
     public static final String ANSIBLE_PLAYBOOK_NAME = "kvm.py";
     public static final String ANSIBLE_MODULE_PATH = "ansible/kvm";
+    
+    //zabbix
+    public static final String ZABBIX_PATH = "/zabbix/api_jsonrpc.php";
 
     public static final String MIN_LIBVIRT_LIVESNAPSHOT_VERSION = "1.0.0";
     public static final String MIN_QEMU_LIVESNAPSHOT_VERSION = "1.3.0";

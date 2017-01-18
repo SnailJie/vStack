@@ -481,7 +481,6 @@ public class AccountManagerImpl extends AbstractService implements AccountManage
 
     private void handle(APILogInByAccountMsg msg) {
         APILogInReply reply = new APILogInReply();
-
         SimpleQuery<AccountVO> q = dbf.createQuery(AccountVO.class);
         q.add(AccountVO_.name, Op.EQ, msg.getAccountName());
         q.add(AccountVO_.password, Op.EQ, msg.getPassword());
@@ -491,7 +490,6 @@ public class AccountManagerImpl extends AbstractService implements AccountManage
             bus.reply(msg, reply);
             return;
         }
-
         reply.setInventory(getSession(vo.getUuid(), vo.getUuid()));
         bus.reply(msg, reply);
     }

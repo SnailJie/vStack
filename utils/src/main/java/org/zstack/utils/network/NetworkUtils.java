@@ -1,6 +1,7 @@
 package org.zstack.utils.network;
 
 import org.apache.commons.lang.StringUtils;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.zstack.utils.Utils;
 import org.zstack.utils.data.Pair;
 import org.zstack.utils.logging.CLogger;
@@ -407,7 +408,7 @@ public class NetworkUtils {
 
         return res;
     }
-
+    
     public static List<String> getAllMac() {
         try {
             List<String> macs = new ArrayList<String>();

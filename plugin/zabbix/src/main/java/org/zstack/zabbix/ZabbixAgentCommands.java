@@ -1,4 +1,4 @@
-package org.zstack.kvm;
+package org.zstack.zabbix;
 
 import org.zstack.core.validation.ConditionalValidation;
 import org.zstack.header.configuration.InstanceOffering;
@@ -17,7 +17,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-public class KVMAgentCommands {
+public class ZabbixAgentCommands {
 	public static enum BootDev {
 		hd(VmBootDevice.HardDisk), cdrom(VmBootDevice.CdRom);
 
@@ -252,6 +252,58 @@ public class KVMAgentCommands {
 		}
 	}
 
+	public static class AddHostToZabbixCmd extends AgentCommand {
+		String jsonrpc = "2.0";
+		String method;
+		AddHostParams params;
+		String auth;
+		String id;
+		 
+		public String getJsonrpc() {
+			return jsonrpc;
+		}
+
+		public void setJsonrpc(String jsonrpc) {
+			this.jsonrpc = jsonrpc;
+		}
+
+		public String getMethod() {
+			return method;
+		}
+
+		public void setMethod(String method) {
+			this.method = method;
+		}
+
+		public AddHostParams getParams() {
+			return params;
+		}
+
+		public void setParams(AddHostParams params) {
+			this.params = params;
+		}
+
+		public String getAuth() {
+			return auth;
+		}
+
+		public void setAuth(String auth) {
+			this.auth = auth;
+		}
+
+		public String getId() {
+			return id;
+		}
+
+		public void setId(String id) {
+			this.id = id;
+		}
+
+	}
+
+	public static class AddHostToZabbixResponse extends AgentResponse {
+
+	}
 
 	public static class HostCapacityCmd extends AgentCommand {
 	}
