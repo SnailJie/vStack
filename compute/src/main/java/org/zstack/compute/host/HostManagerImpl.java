@@ -13,6 +13,7 @@ import org.zstack.core.db.SimpleQuery;
 import org.zstack.core.db.SimpleQuery.Op;
 import org.zstack.core.defer.Deferred;
 import org.zstack.core.errorcode.ErrorFacade;
+import org.zstack.core.keyvalue.KeyValueVO;
 import org.zstack.core.logging.Log;
 import org.zstack.core.thread.AsyncThread;
 import org.zstack.core.thread.ChainTask;
@@ -36,11 +37,17 @@ import org.zstack.header.message.APIMessage;
 import org.zstack.header.message.Message;
 import org.zstack.header.message.MessageReply;
 import org.zstack.header.message.NeedReplyMessage;
+import org.zstack.header.rest.JsonAsyncRESTCallback;
+import org.zstack.header.rest.RESTFacade;
 import org.zstack.header.vm.CreateVmOnLocalMsg;
 import org.zstack.header.vm.DeleteVmPubOnLocalMsg;
 import org.zstack.header.vm.RebootVmPubOnLocalMsg;
+import org.zstack.header.vm.StartVmOnHypervisorReply;
 import org.zstack.header.vm.StartVmPubOnLocalMsg;
 import org.zstack.header.vm.StopVmPubOnLocalMsg;
+import org.zstack.monitor.cmd.MonitorHostCmd.AddMonitorHostCmd;
+import org.zstack.monitor.cmd.MonitorHostCmd.AddMonitorHostResoponse;
+import org.zstack.monitor.params.CreateHostMonitorParams;
 import org.zstack.header.vm.GetPubVmInstanceListMsg;
 import org.zstack.search.GetQuery;
 import org.zstack.search.SearchQuery;
@@ -79,7 +86,8 @@ public class HostManagerImpl extends AbstractService implements HostManager, Man
     private TagManager tagMgr;
     @Autowired
     private HostCpuOverProvisioningManager cpuRatioMgr;
-    
+    @Autowired
+    private RESTFacade restf;
     @Autowired
     protected ThreadFacade thdf;
     protected String syncThreadName;
@@ -403,6 +411,59 @@ public class HostManagerImpl extends AbstractService implements HostManager, Man
                         trigger.fail(errorCode);
                     }
                 });
+            }
+        }).then(new NoRollbackFlow() {
+            String __name__ = "add-into-monitor";
+
+            @Override
+            public void run(final FlowTrigger trigger, Map data) {
+            	new Log(inv.getUuid()).log(HostLogLabel.ADD_HOST_CHECK_OS_VERSION_IN_CLUSTER);
+            	
+            	final AddMonitorHostCmd cmd = new AddMonitorHostCmd();
+            	//获取zabbix access token   
+            	String zabbixToken = dbf.findByColumName(KeyValueVO.class, "entityKey","zabbixToken");
+            	cmd.setAuth(zabbixToken);
+            	
+            	cmd.setId(1);
+            	cmd.setMethod("host.create");
+            	CreateHostMonitorParams params = new CreateHostMonitorParams();
+            	params.setHost("TesthostName");
+            	
+            	List<Map<String,String>> groups = new ArrayList<>();
+            	Map<String,String> group1 = new HashMap<String,String>();
+            	group1.put("groupid", "8");
+            	
+            	params.setGroups(groups);
+            	
+            	List<Map<String,String>> interfaces = new ArrayList<>();
+            	Map<String,String> intefer1 = new HashMap<String,String>();
+            	intefer1.put("type", "1");
+            	intefer1.put("main", "1");
+            	intefer1.put("useip", "1");
+            	intefer1.put("ip", msg.getManagementIp());
+            	intefer1.put("port", "10050");
+            	interfaces.add(intefer1);
+            	params.setInterfaces(interfaces);
+            	cmd.setParams(params);
+            	
+            	
+	        	 restf.asyncJsonPost("http://localhost/zabbix/api_jsonrpc.php", cmd, new JsonAsyncRESTCallback<AddMonitorHostResoponse>() {
+	                 @Override
+	                 public void fail(ErrorCode errorCode) {
+	                	 trigger.fail(errorCode);
+	                 }
+	                
+	                 @Override
+	                 public Class<AddMonitorHostResoponse> getReturnClass() {
+	                     return AddMonitorHostResoponse.class;
+	                 }
+	
+					@Override
+					public void success(AddMonitorHostResoponse ret) {
+						 trigger.next();
+					}
+	             });
+ 
             }
         }).done(new FlowDoneHandler(amsg) {
             @Override

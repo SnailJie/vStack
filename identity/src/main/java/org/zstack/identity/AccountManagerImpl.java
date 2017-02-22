@@ -7,6 +7,7 @@ import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.transaction.annotation.Transactional;
 import org.zstack.core.Platform;
 import org.zstack.core.cloudbus.CloudBus;
+import org.zstack.core.cloudbus.CloudBusCallBack;
 import org.zstack.core.cloudbus.EventCallback;
 import org.zstack.core.cloudbus.EventFacade;
 import org.zstack.core.cloudbus.MessageSafe;
@@ -15,15 +16,43 @@ import org.zstack.core.config.*;
 import org.zstack.core.db.*;
 import org.zstack.core.db.SimpleQuery.Op;
 import org.zstack.core.errorcode.ErrorFacade;
+import org.zstack.core.keyvalue.KeyValueVO;
+import org.zstack.core.logging.Log;
 import org.zstack.core.thread.PeriodicTask;
 import org.zstack.core.thread.ThreadFacade;
+import org.zstack.core.workflow.FlowChainBuilder;
 import org.zstack.header.AbstractService;
 import org.zstack.header.apimediator.ApiMessageInterceptionException;
 import org.zstack.header.apimediator.ApiMessageInterceptor;
 import org.zstack.header.apimediator.GlobalApiMessageInterceptor;
+import org.zstack.header.cluster.ClusterVO;
+import org.zstack.header.core.Completion;
+import org.zstack.header.core.ReturnValueCompletion;
+import org.zstack.header.core.workflow.FlowChain;
+import org.zstack.header.core.workflow.FlowDoneHandler;
+import org.zstack.header.core.workflow.FlowErrorHandler;
+import org.zstack.header.core.workflow.FlowTrigger;
+import org.zstack.header.core.workflow.NoRollbackFlow;
+import org.zstack.header.errorcode.ErrorCode;
 import org.zstack.header.errorcode.OperationFailureException;
 import org.zstack.header.errorcode.SysErrors;
 import org.zstack.header.exception.CloudRuntimeException;
+import org.zstack.header.host.APIAddHostMsg;
+import org.zstack.header.host.AddHostMessage;
+import org.zstack.header.host.AddHostMsg;
+import org.zstack.header.host.AddHostReply;
+import org.zstack.header.host.ConnectHostMsg;
+import org.zstack.header.host.FailToAddHostExtensionPoint;
+import org.zstack.header.host.HostAddExtensionPoint;
+import org.zstack.header.host.HostConstant;
+import org.zstack.header.host.HostErrors;
+import org.zstack.header.host.HostInventory;
+import org.zstack.header.host.HostState;
+import org.zstack.header.host.HostStatus;
+import org.zstack.header.host.HostVO;
+import org.zstack.header.host.HostVO_;
+import org.zstack.header.host.HypervisorFactory;
+import org.zstack.header.host.HypervisorType;
 import org.zstack.header.identity.*;
 import org.zstack.header.identity.AccountConstant.StatementEffect;
 import org.zstack.header.identity.IdentityCanonicalEvents.AccountDeletedData;
@@ -35,9 +64,18 @@ import org.zstack.header.message.APIListMessage;
 import org.zstack.header.message.APIMessage;
 import org.zstack.header.message.APIParam;
 import org.zstack.header.message.Message;
+import org.zstack.header.message.MessageReply;
+import org.zstack.header.rest.JsonAsyncRESTCallback;
+import org.zstack.header.rest.RESTFacade;
 import org.zstack.header.search.APIGetMessage;
 import org.zstack.header.search.APISearchMessage;
 import org.zstack.header.zone.ZoneVO;
+import org.zstack.monitor.cmd.MonitorHostCmd.AddMonitorHostCmd;
+import org.zstack.monitor.cmd.MonitorHostCmd.AddMonitorHostResoponse;
+import org.zstack.monitor.cmd.UserCmd;
+import org.zstack.monitor.cmd.UserCmd.UserLoginZabbixResoponse;
+import org.zstack.monitor.cmd.UserCmd.UserLogintMonitorCmd;
+import org.zstack.monitor.params.CreateHostMonitorParams;
 import org.zstack.utils.*;
 import org.zstack.utils.function.ForEachFunction;
 import org.zstack.utils.gson.JSONObjectUtil;
@@ -78,6 +116,8 @@ public class AccountManagerImpl extends AbstractService implements AccountManage
     private PluginRegistry pluginRgty;
     @Autowired
     private EventFacade evtf;
+    @Autowired
+    private RESTFacade restf;
 
     private List<String> resourceTypeForAccountRef;
     private List<Class> resourceTypes;
@@ -479,23 +519,174 @@ public class AccountManagerImpl extends AbstractService implements AccountManage
         bus.reply(msg, reply);
     }
 
+//    private void handle(APILogInByAccountMsg msg) {
+//        APILogInReply reply = new APILogInReply();
+//
+//        
+//        
+//
+//        loginByAccount(msg, new ReturnValueCompletion<HostInventory>() {
+//            @Override
+//            public void success(HostInventory returnValue) {
+//                reply.setInventory(returnValue);
+//                bus.reply(msg, reply);
+//            }
+//
+//            @Override
+//            public void fail(ErrorCode errorCode) {
+//                reply.setError(errorCode);
+//                bus.reply(msg, reply);
+//            }
+//        });
+//        
+//        
+//        
+//        SimpleQuery<AccountVO> q = dbf.createQuery(AccountVO.class);
+//        q.add(AccountVO_.name, Op.EQ, msg.getAccountName());
+//        q.add(AccountVO_.password, Op.EQ, msg.getPassword());
+//        AccountVO vo = q.find();
+//        if (vo == null) {
+//            reply.setError(errf.instantiateErrorCode(IdentityErrors.AUTHENTICATION_ERROR, "wrong account name or password"));
+//            bus.reply(msg, reply);
+//            return;
+//        }
+//        //更新zabbixlogin
+//        
+//        final UserLogintMonitorCmd cmd = new UserLogintMonitorCmd();
+//         
+// 
+//     
+//    	Map<String,String> params = new HashMap<String,String>();
+//    	
+//    	params.put("user","Admin");
+//    	params.put("password","zabbix");
+//    	cmd.setParams(params);
+//    	
+//    	cmd.setId(1);
+//    	restf.asyncJsonPost("http://localhost/zabbix/api_jsonrpc.php", cmd, new JsonAsyncRESTCallback<UserLoginZabbixResoponse>() {
+//             @Override
+//             public void fail(ErrorCode err) {
+//            	 
+//            	 String errcode = err.getDescription(); 
+//            	
+//            	 
+//             }
+//            
+//             @Override
+//             public Class<UserLoginZabbixResoponse> getReturnClass() {
+//                 return UserLoginZabbixResoponse.class;
+//             }
+//
+//			@Override
+//			public void success(UserLoginZabbixResoponse ret) {
+//				// TODO Auto-generated method stub
+//				String zabbixToken = ret.getResult();
+//				//存入KV
+//				KeyValueVO data = new KeyValueVO();
+//				data.setEntityKey("zabbixToken");
+//				data.setEntityValue(zabbixToken);
+//				dbf.persist(data);
+//			}
+//         });
+//
+//        reply.setInventory(getSession(vo.getUuid(), vo.getUuid()));
+//        bus.reply(msg, reply);
+//    }
+//    
+
     private void handle(APILogInByAccountMsg msg) {
         APILogInReply reply = new APILogInReply();
+        loginByAccount(msg, new ReturnValueCompletion<SessionInventory>() {
+            @Override
+            public void success(SessionInventory returnValue) {
+            	reply.setInventory(returnValue);
+                bus.reply(msg, reply);
+            }
 
-        SimpleQuery<AccountVO> q = dbf.createQuery(AccountVO.class);
-        q.add(AccountVO_.name, Op.EQ, msg.getAccountName());
-        q.add(AccountVO_.password, Op.EQ, msg.getPassword());
-        AccountVO vo = q.find();
-        if (vo == null) {
-            reply.setError(errf.instantiateErrorCode(IdentityErrors.AUTHENTICATION_ERROR, "wrong account name or password"));
-            bus.reply(msg, reply);
-            return;
-        }
-
-        reply.setInventory(getSession(vo.getUuid(), vo.getUuid()));
-        bus.reply(msg, reply);
+            @Override
+            public void fail(ErrorCode errorCode) {
+                reply.setError(errorCode);
+                bus.reply(msg, reply);
+            }
+        });
     }
 
+    private void loginByAccount(final APILogInByAccountMsg msg, ReturnValueCompletion<SessionInventory > completion) {
+    	SessionInventory session = new SessionInventory();
+    	
+    	SimpleQuery<AccountVO> q = dbf.createQuery(AccountVO.class);
+        q.add(AccountVO_.name, Op.EQ, msg.getAccountName());
+        q.add(AccountVO_.password, Op.EQ, msg.getPassword());
+        final  AccountVO vo = q.find();
+        
+        FlowChain chain = FlowChainBuilder.newSimpleFlowChain();
+        chain.setName("Login");
+        chain.then(new NoRollbackFlow() {
+            String __name__ = "call-before-add-host-extension";
+      
+            @Override
+            public void run(final FlowTrigger trigger, Map data) {
+                if (vo == null) {
+                	trigger.fail(errf.instantiateErrorCode(IdentityErrors.AUTHENTICATION_ERROR, "wrong account name or password"));
+                    return;
+                } 
+                getSession(vo.getUuid(), vo.getUuid());
+                	 trigger.next();
+                
+            }
+
+        }).then(new NoRollbackFlow() {
+            String __name__ = "get-monitor-token-message";
+
+            @Override
+            public void run(final FlowTrigger trigger, Map data) {
+            	final UserLogintMonitorCmd cmd = new UserLogintMonitorCmd();
+             	Map<String,String> params = new HashMap<String,String>();
+             	params.put("user","Admin");
+             	params.put("password","zabbix");
+             	cmd.setParams(params);
+             	cmd.setId(1);
+             	restf.asyncJsonPost("http://localhost/zabbix/api_jsonrpc.php", cmd, new JsonAsyncRESTCallback<UserLoginZabbixResoponse>() {
+                      @Override
+                      public void fail(ErrorCode err) {	       
+                    	  trigger.fail(err);
+                      }
+                     
+                      @Override
+                      public Class<UserLoginZabbixResoponse> getReturnClass() {
+                          return UserLoginZabbixResoponse.class;
+                      }
+
+         			@Override
+         			public void success(UserLoginZabbixResoponse ret) {
+         				// TODO Auto-generated method stub
+         				String zabbixToken = ret.getResult();
+         				//存入KV
+         				KeyValueVO data = new KeyValueVO();
+         				data.setEntityKey("zabbixToken");
+         				data.setEntityValue(zabbixToken);
+         				dbf.persist(data);
+         				trigger.next();
+         			}
+                  });
+            }
+        }).done(new FlowDoneHandler(msg) {
+            @Override
+            public void handle(Map data) {
+            	SessionInventory inv = getSession(vo.getUuid(), vo.getUuid());
+                completion.success(inv);
+                logger.debug("Successful login");
+            }
+        }).error(new FlowErrorHandler(msg) {
+            @Override
+            public void handle(ErrorCode errCode, Map data) {
+                completion.fail(errf.instantiateErrorCode("Login faile", errCode));
+            }
+        }).start();
+
+    }
+
+    
 
     private void handle(APIListPolicyMsg msg) {
         List<PolicyVO> vos = dl.listByApiMessage(msg, PolicyVO.class);

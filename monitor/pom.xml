@@ -7,9 +7,9 @@
         <version>1.6.0</version>
 		<relativePath>..</relativePath>
 	</parent>
-	<artifactId>compute</artifactId>
-	<name>compute</name>
-	<description>main implementation for zstack</description>
+	<artifactId>monitor</artifactId>
+	<name>monitor</name>
+	<description>monitor for zstack</description>
 
 	<build>
         <plugins>
@@ -83,16 +83,6 @@
 			<groupId>org.zstack</groupId>
 			<artifactId>search</artifactId>
             <version>${project.version}</version>
-		</dependency>
-		<dependency>
-			<groupId>org.zstack</groupId>
-			<artifactId>monitor</artifactId>
-                 <version>${project.version}</version>
-		</dependency>
-		<dependency>
-	       <groupId>org.zstack</groupId>
-		   <artifactId>identity</artifactId>
-           <version>${project.version}</version>
 		</dependency>
         <dependency>
             <groupId>org.zstack</groupId>
