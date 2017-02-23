@@ -3,6 +3,7 @@ package org.zstack.monitor.cmd;
 import java.util.List;
 import java.util.Map;
 
+import org.zstack.header.agent.AgentResponse;
 import org.zstack.monitor.params.CreateHostMonitorParams;
 
 public  class UserCmd  {
@@ -42,10 +43,10 @@ public  class UserCmd  {
 		     
 		 
     }
-	 public static class UserLoginZabbixResoponse {
+	 public static class UserLoginZabbixResoponse extends AgentResponse{
 		 String result;
-		 String jsonrpc="2.0";
-		 int id;
+		 String jsonrpc;
+		 String id;
 		public String getResult() {
 			return result;
 		}
@@ -58,10 +59,10 @@ public  class UserCmd  {
 		public void setJsonrpc(String jsonrpc) {
 			this.jsonrpc = jsonrpc;
 		}
-		public int getId() {
+		public String getId() {
 			return id;
 		}
-		public void setId(int id) {
+		public void setId(String id) {
 			this.id = id;
 		}
 	    }
